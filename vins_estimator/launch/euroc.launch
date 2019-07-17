@@ -1,7 +1,20 @@
 <launch>
+    <!--
+        VINS在正常工作时一般存在三个节点：“/fature_tracker”、“/vins_estimator”、“/pose_graph”，
+        而VINS的启动文件launch在文件夹VINS-Mono/vins_estimator/launch中，启动时直接读取euroc.launch同时打开三个节点。
+
+        1. <launch>：launch文件中的根元素采用标签定义
+
+        2. <arg>：launch文件内部的局部变量，仅限于launch文件使用
+
+        3. <node>：启动节点
+
+        4. <param>：设置ROS系统运行的参数，存储在参数服务器中
+    -->
+
     <arg name="config_path" default = "$(find feature_tracker)/../config/euroc/euroc_config.yaml" />
 	  <arg name="vins_path" default = "$(find feature_tracker)/../config/../" />
-    
+
     <node name="feature_tracker" pkg="feature_tracker" type="feature_tracker" output="log">
         <param name="config_file" type="string" value="$(arg config_path)" />
         <param name="vins_folder" type="string" value="$(arg vins_path)" />
