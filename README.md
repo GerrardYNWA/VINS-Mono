@@ -1,3 +1,7 @@
+# Personal Comprehension and Chinese Annotation about VINS-Mono
+> 虽然去年在VINS-Mono上花了不少功夫，但还是不太系统，现在参考一些其他人的见解，重新整理修订下。
+> 
+> ToDo
 # VINS-Mono
 ## A Robust and Versatile Monocular Visual-Inertial State Estimator
 
