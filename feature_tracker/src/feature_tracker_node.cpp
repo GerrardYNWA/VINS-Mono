@@ -15,16 +15,28 @@ vector<uchar> r_status;
 vector<float> r_err;
 queue<sensor_msgs::ImageConstPtr> img_buf;
 
-ros::Publisher pub_img,pub_match;
+// 三个发布（输出）
+ros::Publisher pub_img, pub_match;
 ros::Publisher pub_restart;
 
+// 每个相机对应一个FeatureTracker的实例
 FeatureTracker trackerData[NUM_OF_CAM];
+
 double first_image_time;
 int pub_count = 1;
 bool first_image_flag = true;
-double last_image_time = 0;
+double last_image_time = 0; // 上一帧相机的时间戳
 bool init_pub = 0;
 
+/**
+ * @brief:       ROS的回调函数（对新来的图像进行特征点跟踪和发布）
+ * @description: readImage()函数对新来的图像使用光流法进行特征点跟踪，
+ *               追踪的特征点封装成feature_points发布到pub_img的topic下，
+ *               图像封装成ptr发布在pub_match下
+ * @param:       img_msg - 输入的图像
+ * @return:      void
+ * @date:        2019-03-18
+ */
 void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
 {
     if(first_image_flag)
@@ -205,14 +217,21 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
 
 int main(int argc, char **argv)
 {
+    // ros初始化和设置句柄
     ros::init(argc, argv, "feature_tracker");
     ros::NodeHandle n("~");
+
+    // 设置logger的级别（只有>=level的日志记录消息才会得到处理）
     ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Info);
+
+    // 读取yaml文件中的一些配置参数
     readParameters(n);
 
+    // 读取每个相机实例对应的内参
     for (int i = 0; i < NUM_OF_CAM; i++)
         trackerData[i].readIntrinsicParameter(CAM_NAMES[i]);
 
+    // 如果是鱼眼相机，则加入mask来去除边缘噪声
     if(FISHEYE)
     {
         for (int i = 0; i < NUM_OF_CAM; i++)
@@ -228,10 +247,16 @@ int main(int argc, char **argv)
         }
     }
 
+    // 订阅IMAGE_TOPIC(/cam0/image_raw)，执行回调函数img_callback
     ros::Subscriber sub_img = n.subscribe(IMAGE_TOPIC, 100, img_callback);
 
+    // 发布feature实例feature_points跟踪的特征点信息，给后端优化用，由/vins_estimator订阅
     pub_img = n.advertise<sensor_msgs::PointCloud>("feature", 1000);
+
+    // 发布feature_img实例ptr跟踪的特征点图，给RVIZ用和调试用
     pub_match = n.advertise<sensor_msgs::Image>("feature_img",1000);
+
+    // 发布restart，判断特征跟踪模块是否出错，由/vins_estimator订阅
     pub_restart = n.advertise<std_msgs::Bool>("restart",1000);
     /*
     if (SHOW_TRACK)

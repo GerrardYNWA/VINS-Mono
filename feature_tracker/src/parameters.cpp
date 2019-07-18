@@ -34,6 +34,16 @@ T readParam(ros::NodeHandle &n, std::string name)
     return ans;
 }
 
+/**
+ * @brief:       从节点句柄中读取参数信息（在feature_tracker_node函数中被调用）
+ * @description: 从节点句柄中分别获取config_file和vins_folder两个文件（在euroc.launch文件中被定义和赋值）
+ *               - config_file（即euroc_config.yaml）提供若干参数
+ *               - vins_folder（即根目录）提供congfig文件夹下的鱼眼相机的mask
+ *               其余声明的变量被初始化
+ * @param:       n - 节点句柄
+ * @return:      void
+ * @date:        2019-03-18
+ */
 void readParameters(ros::NodeHandle &n)
 {
     std::string config_file;
@@ -69,6 +79,4 @@ void readParameters(ros::NodeHandle &n)
         FREQ = 100;
 
     fsSettings.release();
-
-
 }
