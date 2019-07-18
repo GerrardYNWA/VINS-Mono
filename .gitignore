@@ -11,4 +11,5 @@ A3_rs/
 A3_rs.launch
 test/
 test.launch
-.idea
+.idea/
+.DS_Store
