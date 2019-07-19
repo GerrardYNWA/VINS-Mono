@@ -65,5 +65,5 @@ class FeatureTracker
     double cur_time;  //
     double prev_time; //
 
-    static int n_id;  // 特征点id，每检测到一个新的特征点，就将n_id作为该特征点的id，然后n_id+1
+    static int n_id;  // 特征点id，每检测到一个新的特征点，就将n_id作为该特征点的id，然后n_id + 1
 };
