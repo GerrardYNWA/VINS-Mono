@@ -9,6 +9,7 @@
 
 #include "feature_tracker.h"
 
+// 是否显示去畸变矫正后的特征点（图像）
 #define SHOW_UNDISTORTION 0
 
 vector<uchar> r_status;
@@ -39,14 +40,17 @@ bool init_pub = 0;
  */
 void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
 {
+    // 判断是否是第一帧
     if(first_image_flag)
     {
         first_image_flag = false;
-        first_image_time = img_msg->header.stamp.toSec();
+        first_image_time = img_msg->header.stamp.toSec(); // 记录第一个图像帧的时间
         last_image_time = img_msg->header.stamp.toSec();
         return;
     }
+
     // detect unstable camera stream
+    // 通过时间间隔判断相机数据流是否稳定，有问题则restart
     if (img_msg->header.stamp.toSec() - last_image_time > 1.0 || img_msg->header.stamp.toSec() < last_image_time)
     {
         ROS_WARN("image discontinue! reset the feature tracker!");
@@ -59,11 +63,17 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
         return;
     }
     last_image_time = img_msg->header.stamp.toSec();
+
     // frequency control
+    // 发布频率控制
+    // 并不是每读入一帧图像，就要发布特征点
+    // 判断间隔时间内的发布次数
     if (round(1.0 * pub_count / (img_msg->header.stamp.toSec() - first_image_time)) <= FREQ)
     {
         PUB_THIS_FRAME = true;
+
         // reset the frequency control
+        // 时间间隔内的发布频率十分接近设定频率时，更新时间间隔起始时刻，并将数据发布次数重置为0
         if (abs(1.0 * pub_count / (img_msg->header.stamp.toSec() - first_image_time) - FREQ) < 0.01 * FREQ)
         {
             first_image_time = img_msg->header.stamp.toSec();
@@ -73,7 +83,9 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
     else
         PUB_THIS_FRAME = false;
 
-    cv_bridge::CvImageConstPtr ptr;
+    cv_bridge::CvImageConstPtr ptr; // cv_bridge图像指针，用于将ROS图像转换为OpenCV图像
+
+    // 将图像编码8UC1转换为mono8（将ROS图像转换为OpenCV图像）
     if (img_msg->encoding == "8UC1")
     {
         sensor_msgs::Image img;
@@ -94,12 +106,13 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
     for (int i = 0; i < NUM_OF_CAM; i++)
     {
         ROS_DEBUG("processing camera %d", i);
-        if (i != 1 || !STEREO_TRACK)
-            trackerData[i].readImage(ptr->image.rowRange(ROW * i, ROW * (i + 1)), img_msg->header.stamp.toSec());
-        else
+        if (i != 1 || !STEREO_TRACK) // 单目
+            trackerData[i].readImage(ptr->image.rowRange(ROW * i, ROW * (i + 1)), img_msg->header.stamp.toSec()); // 读取图像数据进行处理
+        else // 双目
         {
             if (EQUALIZE)
             {
+                // 自适应直方图均衡化
                 cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE();
                 clahe->apply(ptr->image.rowRange(ROW * i, ROW * (i + 1)), trackerData[i].cur_img);
             }
@@ -108,10 +121,11 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
         }
 
 #if SHOW_UNDISTORTION
-        trackerData[i].showUndistortion("undistrotion_" + std::to_string(i));
+        trackerData[i].showUndistortion("undistrotion_" + std::to_string(i)); // 显示去畸变矫正后的特征点
 #endif
     }
 
+    // 更新全局ID
     for (unsigned int i = 0;; i++)
     {
         bool completed = false;
@@ -122,8 +136,11 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
             break;
     }
 
-   if (PUB_THIS_FRAME)
-   {
+    // 1. 将特征点id、矫正后归一化平面的3D点、像素2D点、像素的速度
+    //    封装成sensor_msgs::PointCloudPtr类型的feature_points实例中，发布到pub_img；
+    // 2. 将图像封装到cv_bridge::cvtColor类型的ptr实例中，发布到pub_match
+    if (PUB_THIS_FRAME)
+    {
         pub_count++;
         sensor_msgs::PointCloudPtr feature_points(new sensor_msgs::PointCloud);
         sensor_msgs::ChannelFloat32 id_of_point;
@@ -168,7 +185,9 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
         feature_points->channels.push_back(velocity_x_of_point);
         feature_points->channels.push_back(velocity_y_of_point);
         ROS_DEBUG("publish %f, at %f", feature_points->header.stamp.toSec(), ros::Time::now().toSec());
-        // skip the first image; since no optical speed on frist image
+
+        // skip the first image; since no optical speed on first image
+        // 第一帧不发布
         if (!init_pub)
         {
             init_pub = 1;

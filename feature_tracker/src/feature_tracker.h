@@ -59,11 +59,11 @@ class FeatureTracker
     vector<cv::Point2f> pts_velocity;                // 当前帧相对前一帧特征点沿x、y方向的像素移动速度
     vector<int> ids;                                 // 能够被跟踪到的特征点的id
     vector<int> track_cnt;                           // 当前帧forw_img中每个特征点被追踪的时间次数
-    map<int, cv::Point2f> cur_un_pts_map;  //
-    map<int, cv::Point2f> prev_un_pts_map; //
+    map<int, cv::Point2f> cur_un_pts_map;  // 当前帧（map：ids - 归一化坐标）
+    map<int, cv::Point2f> prev_un_pts_map; // 前一帧（map：ids - 归一化坐标）
     camodocal::CameraPtr m_camera;         // 相机模型
-    double cur_time;  //
-    double prev_time; //
+    double cur_time;  // 当前帧图像时间戳
+    double prev_time; // 前一帧图像时间戳
 
     static int n_id;  // 特征点id，每检测到一个新的特征点，就将n_id作为该特征点的id，然后n_id + 1
 };

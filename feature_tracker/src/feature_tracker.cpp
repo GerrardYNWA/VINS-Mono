@@ -211,6 +211,22 @@ void FeatureTracker::readImage(const cv::Mat &_img, double _cur_time)
                 cout << "mask type wrong " << endl;
             if (mask.size() != forw_img.size())
                 cout << "wrong size " << endl;
+
+            /**
+             * @brief:       在mask中不为0的区域检测新的特征点
+             * @description: Go To Definition(s)
+             * @param[in]:   InputArray  - image                     - 输入图像
+             * @param[out]:  OutputArray - corners                   - 存放检测到的角点的vector
+             * @param[in]:   int         - maxCorners                - 返回的角点的数量的最大值
+             * @param[in]:   double      - qualityLevel              - 角点质量水平的最低阈值（范围为0到1，质量最高角点的水平为1），小于该阈值的角点被拒绝
+             * @param[in]:   double      - minDistance               - 返回角点之间欧式距离的最小值
+             * @param[in]:   InputArray  - mask                      - 和输入图像具有相同大小，类型必须为CV_8UC1，用来描述图像中感兴趣的区域，只在感兴趣区域中检测角点
+             * @param[in]:   int         - blockSize = 3             - 计算协方差矩阵时的窗口大小
+             * @param[in]:   bool        - useHarrisDetector = false - 指示是否使用Harris角点检测，如不指定则使用shi-tomasi算法
+             * @param[in]:   double      - k = 0.04                  - Harris角点检测需要的k值
+             * @return:      void
+             * @date:        2019-04-19
+             */
             cv::goodFeaturesToTrack(forw_img, n_pts, MAX_CNT - forw_pts.size(), 0.01, MIN_DIST, mask);
         }
         else
@@ -219,29 +235,47 @@ void FeatureTracker::readImage(const cv::Mat &_img, double _cur_time)
 
         ROS_DEBUG("add feature begins");
         TicToc t_a;
-        addPoints();
+        addPoints(); // 将新检测到的特征点n_pts添加到forw_pts中（id初始化为-1，track_cnt初始化为1）
         ROS_DEBUG("selectFeature costs: %fms", t_a.toc());
     }
+
+    // 当下一帧图像到来时，当前帧数据就成为了上一帧发布的数据
     prev_img = cur_img;
     prev_pts = cur_pts;
     prev_un_pts = cur_un_pts;
+
+    // 把当前帧的数据forw_img、forw_pts赋值给上一帧cur_img、cur_pts
     cur_img = forw_img;
     cur_pts = forw_pts;
+
+    // 根据不同的相机模型去畸变矫正，并转换到归一化坐标上，计算速度
     undistortedPoints();
     prev_time = cur_time;
 }
 
+/**
+ * @brief:       通过F矩阵去除outliers
+ * @description: 将图像坐标转换为归一化坐标
+ *               cv::findFundamentalMat()计算F矩阵
+ *               reduceVector()去除outliers
+ * @return:      void
+ * @date:        2019-07-19
+ */
 void FeatureTracker::rejectWithF()
 {
     if (forw_pts.size() >= 8)
     {
         ROS_DEBUG("FM ransac begins");
         TicToc t_f;
+
         vector<cv::Point2f> un_cur_pts(cur_pts.size()), un_forw_pts(forw_pts.size());
         for (unsigned int i = 0; i < cur_pts.size(); i++)
         {
             Eigen::Vector3d tmp_p;
+
+            // 根据不同的相机模型将二维坐标转换到三维坐标
             m_camera->liftProjective(Eigen::Vector2d(cur_pts[i].x, cur_pts[i].y), tmp_p);
+            // 转换为归一化像素坐标
             tmp_p.x() = FOCAL_LENGTH * tmp_p.x() / tmp_p.z() + COL / 2.0;
             tmp_p.y() = FOCAL_LENGTH * tmp_p.y() / tmp_p.z() + ROW / 2.0;
             un_cur_pts[i] = cv::Point2f(tmp_p.x(), tmp_p.y());
@@ -253,6 +287,7 @@ void FeatureTracker::rejectWithF()
         }
 
         vector<uchar> status;
+        // 调用cv::findFundamentalMat()对un_cur_pts和un_forw_pts计算基础矩阵F
         cv::findFundamentalMat(un_cur_pts, un_forw_pts, cv::FM_RANSAC, F_THRESHOLD, 0.99, status);
         int size_a = cur_pts.size();
         reduceVector(prev_pts, status);
@@ -266,6 +301,7 @@ void FeatureTracker::rejectWithF()
     }
 }
 
+// 更新特征点id
 bool FeatureTracker::updateID(unsigned int i)
 {
     if (i < ids.size())
@@ -278,12 +314,19 @@ bool FeatureTracker::updateID(unsigned int i)
         return false;
 }
 
+// 读取相机内参
 void FeatureTracker::readIntrinsicParameter(const string &calib_file)
 {
     ROS_INFO("reading paramerter of camera %s", calib_file.c_str());
     m_camera = CameraFactory::instance()->generateCameraFromYamlFile(calib_file);
 }
 
+/**
+ * @brief:       显示去畸变矫正后的特征点
+ * @param:       name - 图像帧名称
+ * @return:      void
+ * @date:        2019-04-19
+ */
 void FeatureTracker::showUndistortion(const string &name)
 {
     cv::Mat undistortedImg(ROW + 600, COL + 600, CV_8UC1, cv::Scalar(0));
@@ -320,21 +363,28 @@ void FeatureTracker::showUndistortion(const string &name)
     cv::waitKey(0);
 }
 
+// 对角点图像坐标进行去畸变矫正，转换到归一化坐标系上，并计算每个角点的速度
 void FeatureTracker::undistortedPoints()
 {
     cur_un_pts.clear();
     cur_un_pts_map.clear();
     //cv::undistortPoints(cur_pts, un_pts, K, cv::Mat());
+
     for (unsigned int i = 0; i < cur_pts.size(); i++)
     {
         Eigen::Vector2d a(cur_pts[i].x, cur_pts[i].y);
         Eigen::Vector3d b;
+
+        // 根据不同的相机模型将二维坐标转换到三维坐标
         m_camera->liftProjective(a, b);
+
+        // 再延伸到深度归一化平面上
         cur_un_pts.push_back(cv::Point2f(b.x() / b.z(), b.y() / b.z()));
         cur_un_pts_map.insert(make_pair(ids[i], cv::Point2f(b.x() / b.z(), b.y() / b.z())));
         //printf("cur pts id %d %f %f", ids[i], cur_un_pts[i].x, cur_un_pts[i].y);
     }
-    // caculate points velocity
+
+    // caculate points velocity（计算每个特征点的速度到pts_velocity）
     if (!prev_un_pts_map.empty())
     {
         double dt = cur_time - prev_time;
